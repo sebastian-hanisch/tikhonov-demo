@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import math
+
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
@@ -10,6 +12,23 @@ import tik_constants as C
 from tik_evaluation import Analysis, de, lam_text, noise_label, sci
 
 LOG_FLOOR = 1e-17
+
+
+def _ref_line(fig, value, text, position, axis, log=True, **line_kwargs):
+    """Referenzlinie mit Beschriftung auf einer logarithmischen Achse: die Linie liegt auf dem Datenwert, die Beschriftung braucht log10 des Werts
+    (add_hline und add_vline setzen beide auf denselben Wert, die Beschriftung sitzt dann falsch und dehnt die Achse); log=False für lineare Achsen."""
+    if log and not value > 0.0:
+        return
+    pos = math.log10(value) if log else value
+    top, left = "top" in position, "left" in position
+    if axis == "y":
+        fig.add_hline(y=value, **line_kwargs)
+        if text:
+            fig.add_annotation(xref="paper", yref="y", x=0 if left else 1, y=pos, text=text, showarrow=False, xanchor="left" if left else "right", yanchor="bottom" if top else "top")
+    else:
+        fig.add_vline(x=value, **line_kwargs)
+        if text:
+            fig.add_annotation(xref="x", yref="paper", x=pos, y=1 if top else 0, text=text, showarrow=False, xanchor="right" if left else "left", yanchor="top" if top else "bottom")
 
 
 def _fixed(fig: go.Figure, height: int = 380, **layout) -> go.Figure:
@@ -73,9 +92,9 @@ def build_valley_chart(a: Analysis, reveal: bool) -> go.Figure:
     fig.add_trace(go.Scatter(x=v["lam"], y=np.maximum(v["total"], LOG_FLOOR), mode="lines", name="erwarteter Fehler", line=dict(color="#222222", width=3)))
     fig.add_trace(go.Scatter(x=v["lam"], y=np.maximum(v["bias"], LOG_FLOOR), mode="lines", name="Bias", line=dict(color=C.COLOR_BIAS, width=2, dash="dash")))
     fig.add_trace(go.Scatter(x=v["lam"], y=np.maximum(v["std"], LOG_FLOOR), mode="lines", name="Streuung", line=dict(color=C.COLOR_NAIVE, width=2, dash="dot")))
-    fig.add_vline(x=a.lam, line=dict(color=C.COLOR_TIK, width=2), annotation_text=f"λ = {lam_text(a.lam)}", annotation_position="top left")
+    _ref_line(fig, a.lam, f"λ = {lam_text(a.lam)}", "top left", "x", line=dict(color=C.COLOR_TIK, width=2))
     if reveal:
-        fig.add_vline(x=a.lam_star, line=dict(color=C.COLOR_TRUTH, width=2, dash="dash"), annotation_text=f"λ* = {lam_text(a.lam_star)}", annotation_position="top right")
+        _ref_line(fig, a.lam_star, f"λ* = {lam_text(a.lam_star)}", "top right", "x", line=dict(color=C.COLOR_TRUTH, width=2, dash="dash"))
     fig.update_xaxes(title="Strafparameter λ", type="log", tickformat=".0e")
     fig.update_yaxes(title="Fehler relativ zur Signalnorm", type="log", range=[-3, 3], tickformat=".0e")
     return _fixed(fig, 380)
@@ -88,7 +107,7 @@ def build_factor_chart(res: dict) -> go.Figure:
                              line=dict(color=C.COLOR_TIK, width=2.5)))
     fig.add_trace(go.Scatter(x=[r["factor"] for r in rows], y=[100.0 * r["sim"] for r in rows], mode="markers", name=f"simuliert ({res['reps']} Wdh.)",
                              marker=dict(size=9, color=C.COLOR_CRIME, symbol="diamond")))
-    fig.add_hline(y=100.0 * res["naive"], line=dict(color=C.COLOR_NAIVE, dash="dash"), annotation_text="direkte Inversion", annotation_position="bottom right")
+    _ref_line(fig, 100.0 * res["naive"], "direkte Inversion", "bottom right", "y", line=dict(color=C.COLOR_NAIVE, dash="dash"))
     fig.update_xaxes(title="Vielfaches des besten Parameters λ*", type="log", tickvals=[r["factor"] for r in rows], ticktext=[de(r["factor"], 2).rstrip("0").rstrip(",") for r in rows])
     ys = [100.0 * r["closed"] for r in rows] + [100.0 * r["sim"] for r in rows] + [100.0 * res["naive"]]
     ticks = [t for t in (10, 20, 50, 100, 200, 500) if min(ys) / 1.4 <= t <= max(ys) * 1.4]
@@ -103,7 +122,7 @@ def build_grid_chart(rows: list[dict]) -> go.Figure:
     fig.add_trace(go.Scatter(x=ns, y=[r["direct"] for r in rows], mode="lines+markers", name="direkte Inversion (ehrliche Daten)", line=dict(color=C.COLOR_NAIVE, width=2.5)))
     fig.add_trace(go.Scatter(x=ns, y=[r["tik_honest"] for r in rows], mode="lines+markers", name="Tikhonov, bester Parameter (ehrliche Daten)", line=dict(color=C.COLOR_TIK, width=2.5)))
     fig.add_trace(go.Scatter(x=ns, y=[r["tik_crime"] for r in rows], mode="lines+markers", name="Tikhonov (Daten aus demselben Gitter)", line=dict(color=C.COLOR_CRIME, width=2.5)))
-    fig.add_hline(y=1.0, line=dict(color="#888888", dash="dot"), annotation_text="100 % der Signalnorm", annotation_position="bottom right")
+    _ref_line(fig, 1.0, "100 % der Signalnorm", "bottom right", "y", line=dict(color="#888888", dash="dot"))
     fig.update_xaxes(title="Gitterpunkte n", tickvals=ns)
     fig.update_yaxes(title="Erwarteter relativer Fehler", type="log", tickformat=".0e")
     return _fixed(fig, 400)
